@@ -52,7 +52,7 @@ class Seq2Seq(nn.Module):
         decoder_output, _ = self.decoder(target_seqs, encoder_hidden)
         return decoder_output
 
-    def get_bleu_score(num_grams):
+    def get_bleu_score(self, num_grams):
         bleu_scores = ''
         for i in range(1, num_grams + 1):
             weights = tuple([1 / n for _ in range(n)])
@@ -62,7 +62,7 @@ class Seq2Seq(nn.Module):
             bleu_scores += bleu_i_score
         return bleu_scores
 
-    def train(self, lr=1e-4, batch_size=1, iters=7500, print_iters=100):
+    def train(self, lr, batch_size, epoch, print_iters):
         optimizer = SGD(self.parameters(), lr=lr)
         encoder_hidden = self.encoder.init_hidden(batch_size)
 
@@ -72,31 +72,50 @@ class Seq2Seq(nn.Module):
         train = Dataset(TRAIN_FILE_NAME)
         val = Dataset(VAL_FILE_NAME)
 
-        start_time = time.time()
-        for i in range(1, iters + 1):
-            train_batch = [train.get_random_example() for _ in range(batch_size)]
-            val_batch = [val.get_random_example() for _ in range(batch_size)]
+        for e in range(epoch):
+            # Shuffle data at the beginning of every epoch
+            train_batches = list(train.get_batches(batch_size))
+            num_train_batches = len(train_batches)
+            print("Number of training batches: {}".format(num_train_batches))
 
-            loss_fn = torch.nn.NLLLoss()
-            train_loss = self._get_loss(train_batch, loss_fn)
-            optimizer.zero_grad()
-            train_loss.backward()
-            optimizer.step()
+            fo = open(os.path.join(logs_dir, 'epoch_{}.txt'.format(e)), 'w+')
+            epoch_start = "************Epoch {} Starts*************\n".format(e)
+            fo.write(epoch_start)
+            print(epoch_start)
 
-            val_loss = self._get_loss(val_batch, loss_fn)
+            epoch_start_time = time.time()
+            iters_start_time = time.time()
 
-            train_losses.append(train_loss.data[0])
-            val_losses.append(val_loss.data[0])
+            for i in range(1, num_train_batches):
+                #train_batch = train.get_random_batch(batch_size)
+                train_batch = train_batches[i]
+                val_batch = val.get_random_batch(batch_size)
+                loss_fn = torch.nn.NLLLoss()
 
-            if i % print_iters == 0:
-                end_time = time.time()
-                fo = open(os.path.join(logs_dir, 'epoch_{}.txt'.format(i / print_iters)), 'w+')
-                string = 'epoch: {}, iters: {}, train loss: {:.2f}, val loss: {:.2f}, time: {:.2f} s\n'
-                string = string.format(i / len(train), i, train_loss.data[0], val_loss.data[0], end_time - start_time)
-                #string += get_bleu_score(num_bleu_grams)
-                fo.write(string)
-                print(string)
-                start_time = time.time()
+                train_loss = self._get_loss(train_batch, loss_fn)
+                optimizer.zero_grad()
+                train_loss.backward()
+                optimizer.step()
+                val_loss = self._get_loss(val_batch, loss_fn)
+
+                train_losses.append(train_loss.data[0])
+                val_losses.append(val_loss.data[0])
+
+                if i % print_iters == 0:
+                    iters_end_time = time.time()
+                    string = 'Iters: {}, train loss: {:.2f}, val loss: {:.2f}, time: {:.2f} s\n'
+                    string = string.format(i, train_loss.data[0], val_loss.data[0], iters_end_time - iters_start_time)
+                    #string += get_bleu_score(num_bleu_grams)
+                    fo.write(string)
+                    print(string)
+                    iters_start_time = time.time()
+
+            epoch_end_time = time.time()
+            epoch_end = "************Epoch {} Ends*************\n".format(e)
+            epoch_time = "Total time: {:.2f} s\n".format(epoch_end_time - epoch_start_time)
+            fo.write(epoch_end + epoch_time)
+            print(epoch_end + epoch_time)
+            epoch_start_time = time.time()
 
         return train_losses, val_losses
 
@@ -134,7 +153,6 @@ class DecoderRNN(nn.Module):
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.embedding = nn.Embedding(vocab_size, hidden_size)
-
         self.gru = nn.GRU(2 * hidden_size, hidden_size, num_layers, batch_first=True)
         self.out = nn.Linear(hidden_size, vocab_size)
         self.softmax = nn.LogSoftmax()
@@ -142,23 +160,20 @@ class DecoderRNN(nn.Module):
     def init_hidden(self, batch_size):
         result = Var(torch.zeros(self.num_layers, batch_size, self.hidden_size))
         if use_cuda:
-            return result.cuda()
+            result = result.cuda()
         return result
 
     @staticmethod
     def create_rnn_input(embedded, thought):
         # reorder axes to be (seq_len, batch_size, hidden_size)
         embedded = embedded.permute(1, 0, 2)
-
         seq_len, batch_size, hidden_size = embedded.size()
         rnn_input = Var(torch.zeros((seq_len, batch_size, 2 * hidden_size)))
         if use_cuda:
             rnn_input = rnn_input.cuda()
-
         for i in range(seq_len):
             for j in range(batch_size):
                 rnn_input[i, j] = torch.cat((embedded[i, j], thought[0, j]))
-
         # make batch first
         return rnn_input.permute(1, 0, 2)
 
@@ -182,49 +197,3 @@ class DecoderRNN(nn.Module):
             output, hidden = self.gru(output, hidden)
         output = self.softmax_batch(self.out(output))
         return output, hidden
-
-
-'''
-# Decoder with attention, to be used later
-class AttnDecoderRNN(nn.Module):
-    def __init__(self, hidden_size, vocab_size, num_layers=1, dropout_p=0.1, max_length=MAX_LENGTH):
-        super(AttnDecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.vocab_size = vocab_size
-        self.num_layers = num_layers
-        self.dropout_p = dropout_p
-        self.max_length = max_length
-
-        self.embedding = nn.Embedding(self.vocab_size, self.hidden_size)
-        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
-        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
-        self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(self.hidden_size, self.hidden_size)
-        self.out = nn.Linear(self.hidden_size, self.vocab_size)
-
-    def forward(self, input, hidden, encoder_output, encoder_outputs):
-        embedded = self.embedding(input).view(1, 1, -1)
-        embedded = self.dropout(embedded)
-
-        attn_weights = F.softmax(
-            self.attn(torch.cat((embedded[0], hidden[0]), 1)))
-        attn_applied = torch.bmm(attn_weights.unsqueeze(0),
-                                 encoder_outputs.unsqueeze(0))
-
-        output = torch.cat((embedded[0], attn_applied[0]), 1)
-        output = self.attn_combine(output).unsqueeze(0)
-
-        for i in range(self.num_layers):
-            output = F.relu(output)
-            output, hidden = self.gru(output, hidden)
-
-        output = F.log_softmax(self.out(output[0]))
-        return output, hidden, attn_weights
-
-    def initHidden(self):
-        result = Var(torch.zeros(1, 1, self.hidden_size))
-        if use_cuda:
-            return result.cuda()
-        else:
-            return result
-'''

@@ -19,3 +19,11 @@ class Dataset(object):
 
     def get_random_example(self):
         return self._unpack(random.choice(self.data))
+
+    def get_random_batch(self, batch_size):
+        return [self.get_random_example() for _ in range(batch_size)]
+
+    def get_batches(self, batch_size):
+        random.shuffle(self.data)
+        for i in range(0, len(self.data), batch_size):
+            yield [self._unpack(example) for example in self.data[i:i + batch_size]]
