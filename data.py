@@ -146,11 +146,11 @@ def get_seqs(file_name):
     seqs = []
     for q, a in data:
         q_seq = line_to_seq(q, vocab)
-        q_seq.append(float(vocab[EOS_TOKEN]))
+        q_seq.append(vocab[EOS_TOKEN])
 
-        a_seq = [float(vocab[GO_TOKEN])]
+        a_seq = [vocab[GO_TOKEN]]
         a_seq.extend(line_to_seq(a, vocab))
-        a_seq.append(float(vocab[EOS_TOKEN]))
+        a_seq.append(vocab[EOS_TOKEN])
 
         qa_pair = (q_seq, a_seq)
         seqs.append(qa_pair)
@@ -158,13 +158,14 @@ def get_seqs(file_name):
 
 
 def line_to_seq(line, vocab):
-    return [float(vocab[token]) if token in vocab else float(vocab[UNK_TOKEN]) for token in line.split()]
+    return [vocab[token] if token in vocab else vocab[UNK_TOKEN] for token in line.split()]
 
 
 def pad_seqs(seqs):
     max_seq_len = max(len(s) for s in seqs)
     vocab = load_vocab(VOCAB_FILE_NAME)
     padded_seqs = [s + [vocab[PAD_TOKEN]] * (max_seq_len - len(s)) for s in seqs]
+    return padded_seqs
 
 if __name__ == '__main__':
     print('Getting data...')
