@@ -78,7 +78,7 @@ class Seq2Seq(nn.Module):
             num_train_batches = len(train_batches)
             print("Number of training batches: {}".format(num_train_batches))
 
-            fo = open(os.path.join(logs_dir, 'epoch_{}.txt'.format(e)), 'w+')
+            fo = open(os.path.join(logs_dir, 'epoch_{}.txt'.format(e)), 'w')
             epoch_start = "************Epoch {} Starts*************\n".format(e)
             fo.write(epoch_start)
             print(epoch_start)
