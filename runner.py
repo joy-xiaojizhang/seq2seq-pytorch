@@ -4,7 +4,7 @@ from data import VOCAB_SIZE
 from models import Seq2Seq
 
 lr = 1e-4
-batch_size = 20
+batch_size = 100
 epoch = 20
 print_iters = 100
 

@@ -25,6 +25,7 @@ PAD_TOKEN = '<pad>'
 UNK_TOKEN = '<unk>'
 
 VOCAB_SIZE = 20000
+MAX_OUTPUT_LENGTH = 25
 
 
 def get_raw_data():
@@ -124,7 +125,9 @@ def load_vocab(file_name):
     file_path = os.path.join(PROCESSED_PATH, file_name)
     with open(file_path, 'r') as f:
         vocab = [line.strip() for line in f]
-    return {el: i for i, el in enumerate(vocab)}
+    word2index = {el: i for i, el in enumerate(vocab)}
+    index2word = {i: el for i, el in enumerate(vocab)}
+    return word2index, index2word
 
 
 def load_processed_data(file_name):
@@ -140,7 +143,7 @@ def load_processed_data(file_name):
 
 
 def get_seqs(file_name):
-    vocab = load_vocab(VOCAB_FILE_NAME)
+    vocab, _ = load_vocab(VOCAB_FILE_NAME)
     data = load_processed_data(file_name)
 
     seqs = []
@@ -161,9 +164,13 @@ def line_to_seq(line, vocab):
     return [vocab[token] if token in vocab else vocab[UNK_TOKEN] for token in line.split()]
 
 
+def indices_to_line(indices, index2word):
+    return [index2word[idx] for idx in indices]
+
+
 def pad_seqs(seqs):
     max_seq_len = max(len(s) for s in seqs)
-    vocab = load_vocab(VOCAB_FILE_NAME)
+    vocab, _ = load_vocab(VOCAB_FILE_NAME)
     padded_seqs = [s + [vocab[PAD_TOKEN]] * (max_seq_len - len(s)) for s in seqs]
     return padded_seqs
 
