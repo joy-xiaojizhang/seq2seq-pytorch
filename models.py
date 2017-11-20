@@ -2,8 +2,8 @@ import os, time
 
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
-from torch.optim import SGD
 from torch.autograd import Variable as Var
 
 from dataset import Dataset
@@ -109,7 +109,7 @@ class Seq2Seq(nn.Module):
         return results
 
     def train(self, lr, batch_size, epoch, print_iters):
-        optimizer = SGD(self.parameters(), lr=lr)
+        optimizer = optim.Adam(self.parameters(), lr=lr)
         encoder_hidden = self.encoder.init_hidden(batch_size)
 
         train_losses = []
