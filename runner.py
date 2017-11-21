@@ -6,6 +6,7 @@ from models import Seq2Seq
 lr = 1e-4
 batch_size = 100
 epoch = 20
+hidden_size = 256
 print_iters = 100
 
 def plot_loss(train_losses, val_losses):
@@ -15,6 +16,6 @@ def plot_loss(train_losses, val_losses):
     plt.show()
 
 
-model = Seq2Seq(VOCAB_SIZE, 256)
+model = Seq2Seq(VOCAB_SIZE, hidden_size)
 train_losses, val_losses = model.train(lr, batch_size, epoch, print_iters)
 plot_loss(train_losses, val_losses)

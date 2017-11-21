@@ -5,9 +5,10 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable as Var
+from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 from dataset import Dataset
-from data import TRAIN_FILE_NAME, VAL_FILE_NAME, VOCAB_FILE_NAME, GO_TOKEN, MAX_OUTPUT_LENGTH, load_vocab, pad_seqs, indices_to_line
+from data import TRAIN_FILE_NAME, VAL_FILE_NAME, VOCAB_FILE_NAME, GO_TOKEN, MAX_OUTPUT_LENGTH, load_vocab, mask_seqs, indices_to_line
 from nltk.translate import bleu_score as BLEU
 
 NUM_BLEU_GRAMS = 4
@@ -21,15 +22,24 @@ class Seq2Seq(nn.Module):
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.encoder = EncoderRNN(vocab_size, hidden_size)
-        self.decoder = DecoderRNN(vocab_size, hidden_size)
+        self.decoder = VanillaDecoderRNN(vocab_size, hidden_size)
         if use_cuda:
             self.encoder = self.encoder.cuda()
             self.decoder = self.decoder.cuda()
 
     def _get_loss(self, batch, loss_fn):
-        target_lens = [len(example['answer']) for example in batch]
-        input_seqs = pad_seqs([example['question'] for example in batch])
-        target_seqs = pad_seqs([example['answer'] for example in batch])
+        input_seqs = [example['question'] for example in batch]
+        target_seqs = [example['answer'] for example in batch]
+
+        # Zip into pairs, sort by length (descending), unzip 
+        seq_pairs = sorted(zip(input_seqs, target_seqs), key=lambda p: len(p[0]), reverse=True)
+        input_seqs, target_seqs = zip(*seq_pairs)
+
+        input_lens = [len(seq) for seq in input_seqs]
+        target_lens = [len(seq) for seq in target_seqs]
+ 
+        input_seqs, input_masks = mask_seqs(input_seqs)
+        target_seqs, target_masks = mask_seqs(target_seqs)
 
         input_seqs = Var(torch.LongTensor(input_seqs))
         target_seqs = Var(torch.LongTensor(target_seqs))
@@ -38,7 +48,7 @@ class Seq2Seq(nn.Module):
             input_seqs = input_seqs.cuda()
             target_seqs = target_seqs.cuda()
 
-        output = self(input_seqs, target_seqs)
+        output = self(input_seqs, target_seqs, input_lens)
 
         loss = 0
         batch_size = len(batch)
@@ -47,13 +57,15 @@ class Seq2Seq(nn.Module):
 
         return loss / batch_size
 
-    def forward(self, input_seqs, target_seqs):
-        _, encoder_hidden = self.encoder(input_seqs)
+    def forward(self, input_seqs, target_seqs, input_lens):
+        _, encoder_hidden = self.encoder(input_seqs, input_lens)
         decoder_output, _ = self.decoder(target_seqs, encoder_hidden)
         return decoder_output
 
     def evaluate(self, input_seqs, vocab, index2word, max_output_len=MAX_OUTPUT_LENGTH):
-        input_seqs = pad_seqs(input_seqs)
+        input_seqs = sorted(input_seqs, key=lambda p: len(p), reverse=True)
+        input_lens = [len(seq) for seq in input_seqs]
+        input_seqs, input_masks = mask_seqs(input_seqs)
         input_seqs = Var(torch.LongTensor(input_seqs), volatile=True)
 
         if use_cuda:
@@ -61,7 +73,7 @@ class Seq2Seq(nn.Module):
 
         batch_size = input_seqs.size()[0] 
 
-        _, encoder_hidden = self.encoder(input_seqs)
+        _, encoder_hidden = self.encoder(input_seqs, input_lens)
 
         decoder_hidden = encoder_hidden
         decoder_input = Var(torch.LongTensor([[vocab[GO_TOKEN]] for _ in range(batch_size)]), volatile=True)
@@ -82,6 +94,7 @@ class Seq2Seq(nn.Module):
             decoder_input = Var(torch.LongTensor([[idx] for idx in word_indices]))
             if use_cuda:
                 decoder_input = decoder_input.cuda()
+        decoded_words = [seq[:seq.index('<eos>') + 1] for seq in decoded_words]
         return decoded_words
 
     def get_bleu_score(self, hypothesis, reference, num_grams=NUM_BLEU_GRAMS):
@@ -194,19 +207,20 @@ class EncoderRNN(nn.Module):
             return result.cuda()
         return result
 
-    def forward(self, input_seqs):
-        embedded = self.embedding(input_seqs)
+    def forward(self, input_seqs, input_lengths, hidden=None):
+        embedded = self.embedding(input_seqs).transpose(0, 1) # max_len x batch x hidden_size
+        packed = pack_padded_sequence(embedded, input_lengths)
         batch_size = embedded.size()[0]
-        output = embedded
-        hidden = self.init_hidden(batch_size)
-        for _ in range(self.num_layers):
-            output, hidden = self.gru(output, hidden)
+        #hidden = self.init_hidden(batch_size) # num_layers x batch x hidden_size
+        output, hidden = self.gru(packed, hidden)
+        output, output_lengths = pad_packed_sequence(output) # unpack (back to padded)
+        #print("hidden size: {}".format(hidden.size()))
         return output, hidden
 
 
-class DecoderRNN(nn.Module):
+class VanillaDecoderRNN(nn.Module):
     def __init__(self, vocab_size, hidden_size, num_layers=1):
-        super(DecoderRNN, self).__init__()
+        super(VanillaDecoderRNN, self).__init__()
         self.vocab_size = vocab_size
         self.num_layers = num_layers
         self.hidden_size = hidden_size

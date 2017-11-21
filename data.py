@@ -168,11 +168,13 @@ def indices_to_line(indices, index2word):
     return [index2word[idx] for idx in indices]
 
 
-def pad_seqs(seqs):
+def mask_seqs(seqs):
     max_seq_len = max(len(s) for s in seqs)
     vocab, _ = load_vocab(VOCAB_FILE_NAME)
-    padded_seqs = [s + [vocab[PAD_TOKEN]] * (max_seq_len - len(s)) for s in seqs]
-    return padded_seqs
+    seq_lens = [len(s) for s in seqs]
+    hooded_seqs = [s + [vocab[PAD_TOKEN]] * (max_seq_len - len(s)) for s in seqs]
+    masks = [[1] * seq_len + [0] * (max_seq_len - seq_len) for seq_len in seq_lens]
+    return hooded_seqs, masks
 
 if __name__ == '__main__':
     print('Getting data...')
