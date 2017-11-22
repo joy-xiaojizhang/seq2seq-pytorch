@@ -5,8 +5,9 @@ Pytorch implementation of Seq2Seq model for conversational agents
 CPU or CUDA version 8.0
 
 ## Get started
-Run `python data.py` for processing the data.
-Run `python runner.py` for training.
+Unzip `data/cornell_movie_dialogs_corpus.zip`.
+Run `python src/data.py` for processing the data.
+Run `python src/runner.py` for training.
 
 ## TODO
 * ~~Print conversation examples every epoch (make sure it's working)~~

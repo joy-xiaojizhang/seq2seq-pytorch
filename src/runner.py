@@ -1,10 +1,10 @@
 #import matplotlib.pyplot as plt
 
 from data import VOCAB_SIZE
-from models import Seq2Seq
+from seq2seq import Seq2Seq
 
 lr = 1e-4
-batch_size = 100
+batch_size = 5
 epoch = 20
 hidden_size = 256
 print_iters = 100
