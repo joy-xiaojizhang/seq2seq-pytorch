@@ -16,6 +16,7 @@ VOCAB_FILE_NAME = 'vocab.txt'
 TRAIN_FILE_NAME = 'train.txt'
 VAL_FILE_NAME = 'val.txt'
 TEST_FILE_NAME = 'test.txt'
+SAMPLE_FILE_NAME = 'sample.txt'
 
 CORPUS_ENCODING = 'ISO-8859-2'
 

@@ -6,14 +6,14 @@ import torch.optim as optim
 from torch.autograd import Variable as Var
 
 from dataset import Dataset
-from data import TRAIN_FILE_NAME, VAL_FILE_NAME, VOCAB_FILE_NAME, GO_TOKEN, MAX_OUTPUT_LENGTH, load_vocab, mask_seqs, indices_to_line
+from data import TRAIN_FILE_NAME, VAL_FILE_NAME, VOCAB_FILE_NAME, SAMPLE_FILE_NAME, GO_TOKEN, MAX_OUTPUT_LENGTH, load_vocab, mask_seqs, indices_to_line
 from nltk.translate import bleu_score as BLEU
 
 from blackbox_gru_rnn import BlackboxGRUEncoderRNN, BlackboxGRUDecoderRNN
 
 NUM_BLEU_GRAMS = 4
 
-logs_dir = '../logs'
+logs_dir = 'logs'
 USE_CUDA = torch.cuda.is_available()
 
 class Seq2Seq(nn.Module):
@@ -128,14 +128,18 @@ class Seq2Seq(nn.Module):
             results += '\n'
         return results
 
-    def train(self, lr, batch_size, epoch, print_iters):
+    def train(self, lr, batch_size, epoch, print_iters, test_mode=False):
         optimizer = optim.Adam(self.parameters(), lr=lr)
 
         train_losses = []
         val_losses = []
 
-        train = Dataset(TRAIN_FILE_NAME)
-        val = Dataset(VAL_FILE_NAME)
+        if test_mode:
+            train = Dataset(SAMPLE_FILE_NAME)
+            val = Dataset(SAMPLE_FILE_NAME)
+        else:
+            train = Dataset(TRAIN_FILE_NAME)
+            val = Dataset(VAL_FILE_NAME)
 
         vocab, index2word = load_vocab(VOCAB_FILE_NAME)
 
@@ -155,7 +159,10 @@ class Seq2Seq(nn.Module):
 
             for i in range(1, num_train_batches):
                 train_batch = train_batches[i]
-                val_batch = val.get_random_batch(2)
+                if test_mode:
+                    val_batch = train_batch
+                else:
+                    val_batch = val.get_random_batch(batch_size)
                 loss_fn = torch.nn.NLLLoss()
 
                 train_loss = self._get_loss(train_batch, loss_fn)
