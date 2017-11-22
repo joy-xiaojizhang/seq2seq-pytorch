@@ -31,7 +31,6 @@ class Seq2Seq(nn.Module):
         input_seqs = [example['question'] for example in batch]
         target_seqs = [example['answer'] for example in batch]
 
-        # Zip into pairs, sort by length (descending), unzip 
         seq_pairs = sorted(zip(input_seqs, target_seqs), key=lambda p: len(p[0]), reverse=True)
         input_seqs, target_seqs = zip(*seq_pairs)
 
@@ -62,7 +61,7 @@ class Seq2Seq(nn.Module):
         decoder_output, _ = self.decoder(target_seqs, encoder_hidden)
         return decoder_output
 
-    def evaluate(self, input_seqs, vocab, index2word, max_output_len=MAX_OUTPUT_LENGTH):
+    def predict(self, input_seqs, vocab, index2word, max_output_len=MAX_OUTPUT_LENGTH):
         input_seqs = sorted(input_seqs, key=lambda p: len(p), reverse=True)
         input_lens = [len(seq) for seq in input_seqs]
         input_seqs, input_masks = mask_seqs(input_seqs)
@@ -84,9 +83,9 @@ class Seq2Seq(nn.Module):
 
         for t in range(max_output_len):
             decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
-            decoder_output = decoder_output.permute(1, 0, 2)
-            topv, topi = decoder_output.data.topk(1)
-            topi = topi.permute(0, 2, 1) # 1 x 1 x batch_size
+            decoder_output = decoder_output.permute(1, 0, 2) # 1 x batch x vocab 
+            topv, topi = decoder_output.data.topk(1) # 1 x batch x 1 
+            topi = topi.permute(0, 2, 1) # 1 x 1 x batch
             word_indices = [topi[0][0][i] for i in range(batch_size)]
             words = [index2word[idx] for idx in word_indices]
             for i in range(batch_size):
@@ -94,10 +93,12 @@ class Seq2Seq(nn.Module):
             decoder_input = Var(torch.LongTensor([[idx] for idx in word_indices]))
             if use_cuda:
                 decoder_input = decoder_input.cuda()
+
+        # Truncate everything after <eos>
         decoded_words = [seq[:seq.index('<eos>') + 1] for seq in decoded_words]
         return decoded_words
 
-    def get_bleu_score(self, hypothesis, reference, num_grams=NUM_BLEU_GRAMS):
+    def get_bleu_scores(self, hypothesis, reference, num_grams=NUM_BLEU_GRAMS):
         bleu_scores = ''
         for i in range(1, num_grams + 1):
             weights = tuple([1 / i for _ in range(i)])
@@ -106,7 +107,7 @@ class Seq2Seq(nn.Module):
             bleu_scores += bleu_i_score
         return bleu_scores
 
-    def print_evaluation_results(self, input_seqs, target_seqs, test_seqs):
+    def print_prediction_results(self, input_seqs, target_seqs, test_seqs):
         results = ''
         batch_size = len(input_seqs)
         print('Input seqs: {}'.format(input_seqs))
@@ -117,13 +118,12 @@ class Seq2Seq(nn.Module):
             results += 'Input: {}\n'.format(' '.join(input_seqs[i]))
             results += 'Expected output: {}\n'.format(' '.join(target_seqs[i]))
             results += 'Actual output: {}\n'.format(' '.join(test_seqs[i]))
-            results += self.get_bleu_score(test_seqs[i], target_seqs[i])
+            results += self.get_bleu_scores(test_seqs[i], target_seqs[i])
             results += '\n'
         return results
 
     def train(self, lr, batch_size, epoch, print_iters):
         optimizer = optim.Adam(self.parameters(), lr=lr)
-        encoder_hidden = self.encoder.init_hidden(batch_size)
 
         train_losses = []
         val_losses = []
@@ -148,7 +148,6 @@ class Seq2Seq(nn.Module):
             iters_start_time = time.time()
 
             for i in range(1, num_train_batches):
-                #train_batch = train.get_random_batch(batch_size)
                 train_batch = train_batches[i]
                 val_batch = val.get_random_batch(2)
                 loss_fn = torch.nn.NLLLoss()
@@ -166,7 +165,6 @@ class Seq2Seq(nn.Module):
                     iters_end_time = time.time()
                     string = 'Iters: {}, train loss: {:.2f}, val loss: {:.2f}, time: {:.2f} s\n'
                     string = string.format(i, train_loss.data[0], val_loss.data[0], iters_end_time - iters_start_time)
-                    #string += get_bleu_score(num_bleu_grams)
                     fo.write(string)
                     print(string)
 
@@ -174,19 +172,20 @@ class Seq2Seq(nn.Module):
                     val_input_seqs = [example['question'] for example in val_batch]
                     val_target_seqs = [example['answer'] for example in val_batch]
 
-                    decoded_words = self.evaluate(val_input_seqs, vocab, index2word)
+                    decoded_words = self.predict(val_input_seqs, vocab, index2word)
 
                     val_input_seqs = [indices_to_line(indices, index2word) for indices in val_input_seqs]
                     val_target_seqs = [indices_to_line(indices, index2word) for indices in val_target_seqs]
-                    eval_results = self.print_evaluation_results(val_input_seqs, val_target_seqs, decoded_words)
-                    fo.write(eval_results)
-                    print(eval_results)
+                    predict_results = self.print_prediction_results(val_input_seqs, val_target_seqs, decoded_words)
+                    fo.write(predict_results)
+                    print(predict_results)
                     iters_start_time = time.time()
 
             epoch_end_time = time.time()
             epoch_end = "************Epoch {} Ends*************\n".format(e)
             epoch_time = "Total time: {:.2f} s\n".format(epoch_end_time - epoch_start_time)
             fo.write(epoch_end + epoch_time)
+            fo.close()
             print(epoch_end + epoch_time)
             epoch_start_time = time.time()
 
@@ -201,20 +200,15 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.gru = nn.GRU(hidden_size, hidden_size, self.num_layers, batch_first=True)
 
-    def init_hidden(self, batch_size):
-        result = Var(torch.zeros(self.num_layers, batch_size, self.hidden_size))
-        if use_cuda:
-            return result.cuda()
-        return result
-
     def forward(self, input_seqs, input_lengths, hidden=None):
-        embedded = self.embedding(input_seqs).transpose(0, 1) # max_len x batch x hidden_size
+        embedded = self.embedding(input_seqs).transpose(0, 1) # max_len x batch x hidden
         packed = pack_padded_sequence(embedded, input_lengths)
         batch_size = embedded.size()[0]
-        #hidden = self.init_hidden(batch_size) # num_layers x batch x hidden_size
         output, hidden = self.gru(packed, hidden)
-        output, output_lengths = pad_packed_sequence(output) # unpack (back to padded)
-        #print("hidden size: {}".format(hidden.size()))
+        # output size: max_len x batch x hidden
+        # hidden size: num_layers x batch x hidden
+
+        output, output_lengths = pad_packed_sequence(output)
         return output, hidden
 
 
@@ -237,7 +231,7 @@ class VanillaDecoderRNN(nn.Module):
 
     @staticmethod
     def create_rnn_input(embedded, thought):
-        embedded = embedded.permute(1, 0, 2)
+        embedded = embedded.permute(1, 0, 2) # seq_len x batch x hidden
         seq_len, batch_size, hidden_size = embedded.size()
         rnn_input = Var(torch.zeros((seq_len, batch_size, 2 * hidden_size)))
         if use_cuda:
@@ -258,13 +252,13 @@ class VanillaDecoderRNN(nn.Module):
         return result
 
     def forward(self, target_seqs, thought):
-        target_seqs = self.embedding(target_seqs)
+        target_seqs = self.embedding(target_seqs) # batch x seq_len x hidden
         rnn_input = self.create_rnn_input(target_seqs, thought)
         batch_size = target_seqs.size()[0]
-        output = rnn_input
-        hidden = self.init_hidden(batch_size)
+        output = rnn_input # batch x seq_len x (2 * hidden)
+        hidden = self.init_hidden(batch_size) # num_layers x batch x hidden
         for _ in range(self.num_layers):
             output = F.relu(output)
             output, hidden = self.gru(output, hidden)
-        output = self.softmax_batch(self.out(output))
+        output = self.softmax_batch(self.out(output)) # batch x seq_len x vocab 
         return output, hidden

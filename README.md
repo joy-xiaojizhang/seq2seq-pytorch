@@ -5,15 +5,16 @@ Pytorch implementation of Seq2Seq model for conversational agents
 CPU or CUDA version 8.0
 
 ## Get started
-Run `python runner.py`
+Run `python data.py` for processing the data.
+Run `python runner.py` for training.
 
 ## TODO
 * ~~Print conversation examples every epoch (make sure it's working)~~
 * ~~Print BLEU scores every epoch~~
 * ~~Change SGD to Adam~~
+* ~~Change padding to masking~~
+* Add memory pad
 * Use settings from [this repo](https://github.com/jiweil/Neural-Dialogue-Generation)
-* Change padding to masking
 * Handle/Remove very short sequences
 * Add TensorBoard
 * Add attention mechanism
-* Add memory pad
