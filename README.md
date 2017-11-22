@@ -2,7 +2,7 @@
 Pytorch implementation of Seq2Seq model for conversational agents
 
 ## Requirements
-CPU or CUDA version 8.0
+CPU or CUDA version 8.0, Python version 3.6
 
 ## Get started
 Unzip `data/cornell_movie_dialogs_corpus.zip`.
