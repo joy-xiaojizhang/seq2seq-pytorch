@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable as Var
 
 import numpy as np
+import load_data
 
 USE_CUDA = torch.cuda.is_available()
 
@@ -17,7 +18,7 @@ n = \tanh(W_i_{in} x + b_{in} + r * (W_i_{hn} h + b_{hn}))
 h' = (1 - z) * n + z * h
 '''
 class GRUcell(nn.Module):
-    # TODO: Read papers & code on how to choose init params
+    # TODO: Read papers & code on how to choose init weights 
     @staticmethod
     def init_weights(dims):
         w = (np.random.randn(*dims) * 0.08)
@@ -27,6 +28,8 @@ class GRUcell(nn.Module):
         return w
 
     def __init__(self, embed_size, hidden_size, context_size, num_slots):
+        super(GRUcell, self).__init__()
+
         # Define size parameters
         self.embed_size = embed_size
         self.hidden_size = hidden_size
@@ -40,16 +43,16 @@ class GRUcell(nn.Module):
         # b_i: learnable input-hidden bias (1 x (3*hidden)): b_ir | b_iz | b_in
         # b_h: learnable hidden-hidden bias (1 x (3*hidden)): b_hr | b_hz | b_hn
         # sigma_g, sigma_h: activation functions
-        self.W_i = self.init_weights(input_size, 3 * hidden_size)
-        self.W_h = self.init_weights(hidden_size, 3 * hidden_size)
-        self.b_i = self.init_weights(1, 3 * hidden_size)
-        self.b_h = self.init_weights(1, 3 * hidden_size)
-        self.sigma_g = nn.sigmoid()
-        self.sigma_h = nn.tanh()
+        self.W_i = self.init_weights((self.input_size, 3 * hidden_size))
+        self.W_h = self.init_weights((hidden_size, 3 * hidden_size))
+        self.b_i = self.init_weights((1, 3 * hidden_size))
+        self.b_h = self.init_weights((1, 3 * hidden_size))
+        self.sigma_g = nn.Sigmoid()
+        self.sigma_h = nn.Tanh()
 
         # Define memory units
-        self.M_k = Var(torch.zeros(num_slots, hidden_size))
-        self.M_v = Var(torch.zeros(num_slots, context_size))
+        self.M_k = self.init_weights((num_slots, hidden_size))
+        self.M_v = self.init_weights((num_slots, context_size))
 
     def forward(self, embedded, mask, last_hidden = None):
         # embedded:    batch x hidden
@@ -59,9 +62,9 @@ class GRUcell(nn.Module):
         batch_size = embedded.size()[0]
 
         # Initialize first hidden state
-        if last_hidden == None:
-            split = 2 * hidden_size
-            context = torch.zeros(batch_size * self.context_size) # batch x context
+        if last_hidden is None:
+            split = 2 * self.hidden_size
+            context = torch.zeros(batch_size, self.context_size) # batch x context
             if USE_CUDA:
                 context = context.cuda()
             input = torch.cat((embedded, context), dim = 1) # batch x input_size
@@ -70,12 +73,12 @@ class GRUcell(nn.Module):
             # return torch.zeros(batch_size, self.hidden_size)
 
         # Compute attention and normalize
-        alpha_tilde = torch.exp(torch.mm(last_hidden, M_k.transpose(0, 1))) # batch x num_slots
-        alpha = alpha_tilde / torch.sum(alpha_tilde, dim = 2) # batch x num_slots
+        alpha_tilde = torch.exp(torch.mm(last_hidden, self.M_k.transpose(0, 1))) # batch x num_slots
+        alpha_sum = torch.sum(alpha_tilde, dim = 1).view(-1, 1) # batch x 1
+        alpha = torch.div(alpha_tilde, alpha_sum.expand(alpha_tilde.size())) # batch x num_slots
 
         # Compute context vector
-        context = torch.mm(alpha, M_v) # batch x context
-
+        context = torch.mm(alpha, self.M_v) # batch x context
         if USE_CUDA:
             context = context.cuda()
 
@@ -86,19 +89,19 @@ class GRUcell(nn.Module):
         # r (reset gate): batch x hidden
         # z (update gate): batch x hidden
         # n (output gate): batch x hidden
-        split = 2 * hidden_size
-        b_i = b_i.repeat(batch_size, 1) # batch x (3*hidden)
-        b_h = b_h.repeat(batch_size, 1) # batch x (3*hidden)
+        split = 2 * self.hidden_size
+        b_i = self.b_i.repeat(batch_size, 1) # batch x (3*hidden)
+        b_h = self.b_h.repeat(batch_size, 1) # batch x (3*hidden)
         gates = self.sigma_g(torch.mm(input, self.W_i[:, :split]) +
                              torch.mm(last_hidden, self.W_h[:, :split]) +
-                             self.b_i[:split] + self.b_h[:split]) # batch x (2*hidden)
+                             b_i[:, :split] + b_h[:, :split]) # batch x (2*hidden)
         r = gates[:, :self.hidden_size]
         z = gates[:, self.hidden_size:] 
-        n = self.sigma_h(torch.mm(input, self.W_i[:, split:]) + self.b_i[split:] +
-                         r * torch.mm(last_hidden, self.W_h[:, split:]) + self.b_h[split:])
+        n = self.sigma_h(torch.mm(input, self.W_i[:, split:]) + b_i[:, split:] +
+                         r * torch.mm(last_hidden, self.W_h[:, split:]) + b_h[:, split:])
 
         # Compute hidden state
-        ones_batch_hidden = Var(torch.ones(self.batch_size, self_hidden_size))
+        ones_batch_hidden = Var(torch.ones(batch_size, self.hidden_size))
 
         if USE_CUDA:
             ones_batch_hidden = ones_batch_hidden.cuda()
@@ -148,7 +151,7 @@ class GRUEncoderRNN(nn.Module):
 
 class GRUDecoderRNN(nn.Module):
     def __init__(self, vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed = None):
-        super(GRUEncoderRNN, self).__init__()
+        super(GRUDecoderRNN, self).__init__()
 
         # Define size parameters
         self.vocab_size = vocab_size
@@ -168,6 +171,7 @@ class GRUDecoderRNN(nn.Module):
         self.out = nn.Linear(hidden_size, vocab_size)
         self.loss_fn = nn.CrossEntropyLoss(size_average = False, ignore_index = 2)
 
+
     def forward(self, max_step, hidden, is_train = True, output_seqs = None, output_mask = None, start_idx = None):
         # hidden: batch x hidden
         # output_seqs: batch x max_step (index representation), always starts with GO_TOKEN
@@ -185,10 +189,12 @@ class GRUDecoderRNN(nn.Module):
                 mask_i = output_mask[:, i] # batch
                 hidden = self.gru_cell(embedded_i, mask_i, hidden) # batch x hidden
                 logit = self.out(hidden) # batch x vocab
-                loss_i = self.loss_fn(logit, embedded[:, i + 1]) 
+                print("LOGIT: ", logit)
+                print("output seqs: ", output_seqs[:, i + 1])
+                loss_i = self.loss_fn(logit, output_seqs[:, i + 1]) 
                 loss += loss_i
 
-            return hidden, loss / torch.sum(output_mask)
+            return loss / torch.sum(output_mask)
         
         # Predict mode
         batch_size = hidden.size()[0]
@@ -212,3 +218,23 @@ class GRUDecoderRNN(nn.Module):
             torch.cat((pred_seqs, pred), dim = 1)
             
             return pred_seqs
+
+
+class GRUSeq2Seq(nn.Module):
+    def __init__(self, vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed = None):
+        super(GRUSeq2Seq, self).__init__()
+        self.encoder = GRUEncoderRNN(vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed)
+        self.decoder = GRUDecoderRNN(vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed)
+
+    def forward(self, input_max_step, input_seqs, input_mask, output_max_step, is_train = True, output_seqs = None, output_mask = None, start_idx = None):
+        # Encoding step
+        encoder_hidden = self.encoder(input_max_step, input_seqs, input_mask)
+
+        # Decoding step: train mode
+        if is_train:
+            loss = self.decoder(output_max_step, encoder_hidden, is_train = True, output_seqs = output_seqs, output_mask = output_mask)
+            return loss
+
+        # Decoding step: test mode
+        predictions = self.decoder(output_max_step, encoder_hidden, is_train = False, start_idx = start_idx)
+        return predictions
