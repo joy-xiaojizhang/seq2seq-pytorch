@@ -6,9 +6,7 @@ from torch.autograd import Variable as Var
 
 import numpy as np
 
-def init_weights(dims):
-    w = (np.random.randn(*dims) /100.0)
-    return torch.nn.Parameter(torch.from_numpy(w.astype('float32')), requires_grad=True)
+USE_CUDA = torch.cuda.is_available()
 
 '''
 A gated recurrent unit cell with memory pad
@@ -18,7 +16,16 @@ z = \mathrm{sigmoid}(W_i_{iz} x + b_{iz} + W_i_{hz} h + b_{hz})
 n = \tanh(W_i_{in} x + b_{in} + r * (W_i_{hn} h + b_{hn}))
 h' = (1 - z) * n + z * h
 '''
-def GRUcell(nn.Module):
+class GRUcell(nn.Module):
+    # TODO: Read papers & code on how to choose init params
+    @staticmethod
+    def init_weights(dims):
+        w = (np.random.randn(*dims) * 0.08)
+        w = torch.nn.Parameter(torch.from_numpy(w.astype('float32')), requires_grad=True)
+        if USE_CUDA:
+            w = w.cuda()
+        return w
+
     def __init__(self, embed_size, hidden_size, context_size, num_slots):
         # Define size parameters
         self.embed_size = embed_size
@@ -33,10 +40,10 @@ def GRUcell(nn.Module):
         # b_i: learnable input-hidden bias (1 x (3*hidden)): b_ir | b_iz | b_in
         # b_h: learnable hidden-hidden bias (1 x (3*hidden)): b_hr | b_hz | b_hn
         # sigma_g, sigma_h: activation functions
-        self.W_i = init_weights(input_size, 3 * hidden_size)
-        self.W_h = init_weights(hidden_size, 3 * hidden_size)
-        self.b_i = init_weights(1, 3 * hidden_size)
-        self.b_h = init_weights(1, 3 * hidden_size)
+        self.W_i = self.init_weights(input_size, 3 * hidden_size)
+        self.W_h = self.init_weights(hidden_size, 3 * hidden_size)
+        self.b_i = self.init_weights(1, 3 * hidden_size)
+        self.b_h = self.init_weights(1, 3 * hidden_size)
         self.sigma_g = nn.sigmoid()
         self.sigma_h = nn.tanh()
 
@@ -55,6 +62,8 @@ def GRUcell(nn.Module):
         if last_hidden == None:
             split = 2 * hidden_size
             context = torch.zeros(batch_size * self.context_size) # batch x context
+            if USE_CUDA:
+                context = context.cuda()
             input = torch.cat((embedded, context), dim = 1) # batch x input_size
             return torch.mm(input, self.W_i[:, split:])
             # Or simply:
@@ -66,6 +75,9 @@ def GRUcell(nn.Module):
 
         # Compute context vector
         context = torch.mm(alpha, M_v) # batch x context
+
+        if USE_CUDA:
+            context = context.cuda()
 
         # Compute input
         input = torch.cat((embedded, context), dim = 1) # batch x input_size
@@ -87,6 +99,10 @@ def GRUcell(nn.Module):
 
         # Compute hidden state
         ones_batch_hidden = Var(torch.ones(self.batch_size, self_hidden_size))
+
+        if USE_CUDA:
+            ones_batch_hidden = ones_batch_hidden.cuda()
+
         h = (ones_batch_hidden - z) * n + z * last_hidden # batch x hidden
 
         # Masking
@@ -96,7 +112,7 @@ def GRUcell(nn.Module):
         return h
 
 
-def GRUEncoderRNN(nn.Module):
+class GRUEncoderRNN(nn.Module):
     def __init__(self, vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed = None):
         super(GRUEncoderRNN, self).__init__()
 
@@ -130,7 +146,7 @@ def GRUEncoderRNN(nn.Module):
         return hidden
 
 
-def GRUDecoderRNN(nn.Module):
+class GRUDecoderRNN(nn.Module):
     def __init__(self, vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed = None):
         super(GRUEncoderRNN, self).__init__()
 
@@ -180,7 +196,7 @@ def GRUDecoderRNN(nn.Module):
         decoder_input = Var(torch.LongTensor([[start_idx] for _ in range(batch_size)])) # batch x 1
         pred_seqs = decoder_input.clone()
 
-        if use_cuda:
+        if USE_CUDA:
             mask_ones = mask_ones.cuda()
             decoder_input = decoder_input.cuda()
             pred_seqs = pred_seqs.cuda()
