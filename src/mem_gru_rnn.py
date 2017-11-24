@@ -11,7 +11,13 @@ USE_CUDA = torch.cuda.is_available()
 
 '''
 A gated recurrent unit cell with memory pad
-Math:
+Memory pad:
+a' = exp(h * M_k)
+a = normalize(a')
+c = a' * M_v
+x = (in, c)
+
+GPU:
 r = \mathrm{sigmoid}(W_i_{ir} x + b_{ir} + W_i_{hr} h + b_{hr})
 z = \mathrm{sigmoid}(W_i_{iz} x + b_{iz} + W_i_{hz} h + b_{hz})
 n = \tanh(W_i_{in} x + b_{in} + r * (W_i_{hn} h + b_{hn}))
@@ -64,7 +70,7 @@ class GRUcell(nn.Module):
         # Initialize first hidden state
         if last_hidden is None:
             split = 2 * self.hidden_size
-            context = torch.zeros(batch_size, self.context_size) # batch x context
+            context = Var(torch.zeros(batch_size, self.context_size)) # batch x context
             if USE_CUDA:
                 context = context.cuda()
             input = torch.cat((embedded, context), dim = 1) # batch x input_size
@@ -128,7 +134,7 @@ class GRUEncoderRNN(nn.Module):
 
         # Define embedding
         if prev_embed:
-            print('TODO: use pretrained embeddings')
+            self.embedding = prev_embed
         else:
             self.embedding = nn.Embedding(vocab_size, embed_size)
 
@@ -162,7 +168,7 @@ class GRUDecoderRNN(nn.Module):
 
         # Define embedding
         if prev_embed:
-            print('TODO: use pretrained embeddings')
+            self.embedding = prev_embed
         else:
             self.embedding = nn.Embedding(vocab_size, embed_size)
 
@@ -184,13 +190,11 @@ class GRUDecoderRNN(nn.Module):
             loss = 0.0
             embedded = self.embedding(output_seqs) # batch x max_step x embed_size
 
-            for i in range(max_step - 1): # don't feed <eos>
+            for i in range(max_step - 1): # don't feed <eos>, might change later
                 embedded_i = embedded[:, i, :].squeeze() # batch x embed_size
                 mask_i = output_mask[:, i] # batch
                 hidden = self.gru_cell(embedded_i, mask_i, hidden) # batch x hidden
                 logit = self.out(hidden) # batch x vocab
-                print("LOGIT: ", logit)
-                print("output seqs: ", output_seqs[:, i + 1])
                 loss_i = self.loss_fn(logit, output_seqs[:, i + 1]) 
                 loss += loss_i
 
@@ -198,26 +202,28 @@ class GRUDecoderRNN(nn.Module):
         
         # Predict mode
         batch_size = hidden.size()[0]
-        mask_ones = Var(torch.ones((batch, 1))) # batch x 1
+        mask_ones = Var(torch.ones([batch_size])) # batch x 1
         decoder_input = Var(torch.LongTensor([[start_idx] for _ in range(batch_size)])) # batch x 1
-        pred_seqs = decoder_input.clone()
+        pred_seqs = decoder_input.clone() 
 
         if USE_CUDA:
             mask_ones = mask_ones.cuda()
             decoder_input = decoder_input.cuda()
             pred_seqs = pred_seqs.cuda()
 
-        for i in range(max_step):
+        for i in range(max_step - 1): # May modify later
             embedded_i = self.embedding(decoder_input).squeeze() # batch x embed
             hidden = self.gru_cell(embedded_i, mask_ones, hidden) # batch x hidden
             logit = self.out(hidden) # batch x vocab
 
-            # Get argmax of each batch, assign as new input
-            pred, _ = torch.max(logit, 1) # batch
-            decoder_input = pred.view(-1, 1) # batch x 1
-            torch.cat((pred_seqs, pred), dim = 1)
+            # Get argmax of each batch and assign as new input
+            _, pred = torch.max(logit, 1) # batch
+            pred = pred.view((-1, 1)) # batch x 1
+            decoder_input = pred
+ 
+            pred_seqs = torch.cat((pred_seqs, pred), dim = 1)
             
-            return pred_seqs
+        return pred_seqs
 
 
 class GRUSeq2Seq(nn.Module):
@@ -235,6 +241,6 @@ class GRUSeq2Seq(nn.Module):
             loss = self.decoder(output_max_step, encoder_hidden, is_train = True, output_seqs = output_seqs, output_mask = output_mask)
             return loss
 
-        # Decoding step: test mode
+        # Decoding step: predict mode
         predictions = self.decoder(output_max_step, encoder_hidden, is_train = False, start_idx = start_idx)
         return predictions
