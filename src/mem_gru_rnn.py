@@ -231,6 +231,9 @@ class GRUSeq2Seq(nn.Module):
         super(GRUSeq2Seq, self).__init__()
         self.encoder = GRUEncoderRNN(vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed)
         self.decoder = GRUDecoderRNN(vocab_size, embed_size, hidden_size, context_size, num_slots, prev_embed)
+        if USE_CUDA:
+            self.encoder = self.encoder.cuda()
+            self.decoder = self.decoder.cuda()
 
     def forward(self, input_max_step, input_seqs, input_mask, output_max_step, is_train = True, output_seqs = None, output_mask = None, start_idx = None):
         # Encoding step
