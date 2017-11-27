@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 class BlackboxGRUEncoderRNN(nn.Module):
     def __init__(self, vocab_size, hidden_size, num_layers=1):
         super(BlackboxGRUEncoderRNN, self).__init__()
-        self.num_layers = num_layers
+        self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.gru = nn.GRU(hidden_size, hidden_size, self.num_layers, batch_first=True)

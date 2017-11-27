@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from torch.autograd import Variable as Var
 
 import numpy as np
-import load_data
 
 USE_CUDA = torch.cuda.is_available()
 
