@@ -1,19 +1,21 @@
 #import matplotlib.pyplot as plt
 import sys
+from train import Train
 from data import VOCAB_SIZE
-from seq2seq import Seq2Seq
 
 train_lr = 1e-4
-train_batch_size = 20
+train_batch_size = 5
 train_epoch = 20
-train_hidden_size = 300
+train_hidden_size = 512
 train_print_iters = 100
 
+'''
 test_lr = 1e-6
 test_batch_size = 3
 test_epoch = 100
 test_hidden_size = 500
 test_print_iters = 1
+'''
 
 def plot_loss(train_losses, val_losses):
     plt.plot(train_losses, color='red', label='train')
@@ -22,11 +24,13 @@ def plot_loss(train_losses, val_losses):
     plt.show()
 
 
+'''
 if len(sys.argv) == 2 and sys.argv[1] == 'test':
     model = Seq2Seq(VOCAB_SIZE, test_hidden_size)
     train_losses, val_losses = model.train(test_lr, test_batch_size, test_epoch, test_print_iters, test_mode=True)
     plot_loss(train_losses, val_losses)
 else:
-    model = Seq2Seq(VOCAB_SIZE, train_hidden_size)
-    train_losses, val_losses = model.train(train_lr, train_batch_size, train_epoch, train_print_iters)
-    plot_loss(train_losses, val_losses)
+'''
+model = Train()
+train_losses, bleu_scores = model.train_mem_gru(train_lr, train_batch_size, train_epoch, train_print_iters, 10)
+plot_loss(train_losses, val_losses)
