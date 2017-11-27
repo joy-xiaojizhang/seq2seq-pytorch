@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.autograd import Variable as Var
 
 from dataset import Dataset
-from data import TRAIN_FILE_NAME, VAL_FILE_NAME, VOCAB_FILE_NAME, GO_TOKEN, MAX_OUTPUT_LENGTH, load_vocab, mask_seqs, indices_to_line
+from data import TRAIN_FILE_NAME, VAL_FILE_NAME, VOCAB_FILE_NAME, VOCAB_SIZE, MAX_OUTPUT_LENGTH, load_vocab, mask_seqs, indices_to_line, GO_TOKEN_INDEX, EOS_TOKEN_INDEX
 from nltk.translate import bleu_score as BLEU
 
 from blackbox_gru_rnn import BlackboxGRUEncoderRNN, BlackboxGRUDecoderRNN
@@ -20,7 +20,7 @@ USE_CUDA = torch.cuda.is_available()
 class Train(nn.Module):
     def __init__(self):
         super(Train, self).__init__()
-        self.model = GRUSeq2Seq(1024, 512, 512, 200, 200)
+        self.model = GRUSeq2Seq(VOCAB_SIZE, 512, 512, 200, 200)
 
     # Finds the index of given token in the input sequence
     # If the token is not in the input, return the last index
@@ -78,29 +78,40 @@ class Train(nn.Module):
         for i in range(1, num_grams + 1):
             weights = tuple([1 / i for _ in range(i)])
             bleu_i_score = BLEU.sentence_bleu([reference], hypothesis, weights = weights)
-            #bleu_i_score = 'BLEU-{} score: {}\n'.format(i, bleu_i_score)
-            #bleu_scores += bleu_i_score
             bleu_scores.append(bleu_i_score)
         return bleu_scores
 
-    def print_prediction_results(self, input_seqs, target_seqs, test_seqs, index2word):
+    def truncate_seq(self, seq, token):
+        # Find token index in seq
+        try:
+            idx = seq.index(token)
+        except ValueError:
+            idx = len(seq)
+        return seq[:idx + 1]
+
+    def print_prediction_results(self, input_seqs, target_seqs, pred_seqs, index2word, eos_idx):
         results = ''
         batch_size = input_seqs.size()[0]
+
+        # Truncate sequences (remove everything after <eos>)
+        input_seqs = [self.truncate_seq(seq.data.numpy().tolist(), eos_idx) for seq in input_seqs] 
+        target_seqs = [self.truncate_seq(seq.data.numpy().tolist(), eos_idx) for seq in target_seqs] 
+        pred_seqs = [self.truncate_seq(seq.data.numpy().tolist(), eos_idx) for seq in pred_seqs] 
 
         # Convert indices to words
         input_seqs = [indices_to_line(seq, index2word) for seq in input_seqs]
         target_seqs = [indices_to_line(seq, index2word) for seq in target_seqs]
-        test_seqs = [indices_to_line(seq, index2word) for seq in test_seqs]
+        pred_seqs = [indices_to_line(seq, index2word) for seq in pred_seqs]
 
         for i in range(batch_size):
             results += '************Test Pair {}************\n'.format(i)
             results += 'Input: {}\n'.format(' '.join(input_seqs[i]))
             results += 'Expected output: {}\n'.format(' '.join(target_seqs[i]))
-            results += 'Actual output: {}\n'.format(' '.join(test_seqs[i]))
+            results += 'Actual output: {}\n'.format(' '.join(pred_seqs[i]))
 
             # Print bleu scores
-            bleu_scores = self.get_bleu_scores(test_seqs[i], target_seqs[i])
-            results += ''.join(['BLEU-{} score: {}\n'.format(i, bleu_i_score) for i, bleu_i_score in bleu_scores])
+            bleu_scores = self.get_bleu_scores(pred_seqs[i], target_seqs[i])
+            results += ''.join(['BLEU-{} score: {}\n'.format(i + 1, bleu_i_score) for i, bleu_i_score in enumerate(bleu_scores)])
 
             results += '\n'
         return results, bleu_scores
@@ -140,15 +151,9 @@ class Train(nn.Module):
             iters_start_time = time.time()
 
             for i in range(1, num_train_batches):
-                train_input_seqs, train_input_mask, train_max_input_len, train_target_seqs, train_target_mask = train_batches[i]
+                train_input_seqs, train_input_mask, train_max_input_len, train_target_seqs, train_target_mask, train_max_target_len = train.prepare_input(train_batches[i], USE_CUDA)
 
-                if USE_CUDA:
-                    train_input_seqs = train_input_seqs.cuda()
-                    train_input_mask = train_input_mask.cuda()
-                    train_target_seqs = train_target_seqs.cuda()
-                    train_target_mask = train_target_mask.cuda()
-
-                train_loss = model(train_max_input_len, train_input_seqs, train_input_mask, is_train=True, output_seqs=train_target_seqs, output_mask=train_target_mask)
+                train_loss = self.model(train_max_input_len, train_input_seqs, train_input_mask, train_max_target_len, is_train=True, output_seqs=train_target_seqs, output_mask=train_target_mask)
                 train_losses.append(train_loss)
 
                 if i % print_iters == 0:
@@ -161,14 +166,16 @@ class Train(nn.Module):
                     print(string)
 
                     # Run prediction examples
-                    val_input_seqs, val_input_mask, val_max_input_len, val_target_seqs, _ = val.get_random_batch(num_val_examples)
+                    val_input_seqs, val_input_mask, val_max_input_len, val_target_seqs, _, _ = val.get_random_batch(num_val_examples, USE_CUDA)
 
+                    '''
                     if USE_CUDA:
                         val_input_seqs = val_input_seqs.cuda()
                         val_input_mask = val_input_mask.cuda()
+                    '''
 
-                    predictions = model(val_max_input_len, val_input_seqs, val_input_mask, is_train=False, start_idx=1)
-                    pred_results, bleu = print_prediction_results(val_input_seqs, val_target_seqs, predictions, index2word)
+                    predictions = self.model(val_max_input_len, val_input_seqs, val_input_mask, 25, is_train=False, start_idx=GO_TOKEN_INDEX)
+                    pred_results, bleu = self.print_prediction_results(val_input_seqs, val_target_seqs, predictions, index2word, EOS_TOKEN_INDEX)
                     print(pred_results)
                     bleu_scores.append(bleu) #Modify later
                     iters_start_time = time.time()
