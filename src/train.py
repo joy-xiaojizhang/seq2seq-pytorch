@@ -100,7 +100,7 @@ class Train(nn.Module):
             iters_start_time = time.time()
 
             for i in range(1, num_train_batches):
-                train_input_seqs, train_input_mask, train_max_input_len, train_target_seqs, train_target_mask, train_max_target_len = train.prepare_input(train_batches[i], USE_CUDA)
+                train_input_seqs, train_input_mask, train_max_input_len, train_target_seqs, train_target_mask, train_max_target_len = train.prepare_batched_input(train_batches[i], USE_CUDA)
 
                 train_loss = self.model(train_max_input_len, train_input_seqs, train_input_mask, train_max_target_len, is_train=True, output_seqs=train_target_seqs, output_mask=train_target_mask)
                 train_losses.append(train_loss)
