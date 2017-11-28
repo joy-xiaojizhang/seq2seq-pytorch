@@ -23,14 +23,14 @@ class Dataset(object):
         return self._unpack(random.choice(self.data))
 
     def get_random_batch(self, batch_size, use_cuda):
-        return self.prepare_input([self.get_random_example() for _ in range(batch_size)], use_cuda)
+        return self.prepare_batched_input([self.get_random_example() for _ in range(batch_size)], use_cuda)
 
     def get_batches(self, batch_size):
         random.shuffle(self.data)
         for i in range(0, len(self.data), batch_size):
             yield [self._unpack(example) for example in self.data[i:i + batch_size]]
 
-    def prepare_input(self, batch, use_cuda):
+    def prepare_batched_input(self, batch, use_cuda):
         input_seqs = [example['question'] for example in batch]
         target_seqs = [example['answer'] for example in batch]
         max_input_len = max([len(seq) for seq in input_seqs])
@@ -44,10 +44,6 @@ class Dataset(object):
         target_seqs = Var(torch.LongTensor(target_seqs))
         target_mask = Var(torch.FloatTensor(target_mask))
 
-        '''
-        Commented out for resolving out of memory issue
-        Move use_cuda code to training
-        '''
         if use_cuda:
             input_seqs = input_seqs.cuda()
             input_mask = input_mask.cuda()
