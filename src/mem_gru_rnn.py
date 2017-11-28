@@ -23,7 +23,6 @@ n = \tanh(W_i_{in} x + b_{in} + r * (W_i_{hn} h + b_{hn}))
 h' = (1 - z) * n + z * h
 '''
 class GRUcell(nn.Module):
-    # TODO: Read papers & code on how to choose init weights 
     @staticmethod
     def init_weights(dims):
         w = (np.random.randn(*dims) * 0.08)
