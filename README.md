@@ -18,6 +18,7 @@ Run `python src/runner.py` for training.
 * ~~Change padding to masking~~
 * ~~Add memory pad~~
 * ~~Add attention mechanism~~
+* Optimize memory usage
 * Use settings from [this repo](https://github.com/jiweil/Neural-Dialogue-Generation)
-* Handle/Remove very short sequences
+* Handle/Remove very short sequences (length <= 3) in training/prediction
 * Add TensorBoard

@@ -16,7 +16,7 @@ a = normalize(a')
 c = a' * M_v
 x = (in, c)
 
-GPU:
+GRU:
 r = \mathrm{sigmoid}(W_i_{ir} x + b_{ir} + W_i_{hr} h + b_{hr})
 z = \mathrm{sigmoid}(W_i_{iz} x + b_{iz} + W_i_{hz} h + b_{hz})
 n = \tanh(W_i_{in} x + b_{in} + r * (W_i_{hn} h + b_{hn}))
