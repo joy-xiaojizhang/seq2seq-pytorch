@@ -102,7 +102,7 @@ class Train(nn.Module):
             for i in range(1, num_train_batches):
                 optimizer.zero_grad()
 
-                train_input_seqs, train_input_mask, train_max_input_len, train_target_seqs, train_target_mask, train_max_target_len = train.prepare_batched_input(train_batches[i], USE_CUDA)
+                train_input_seqs, train_input_mask, train_max_input_len, train_target_seqs, train_target_mask, train_max_target_len = train.prepare_batched_input(train_batches[i], USE_CUDA, False)
 
                 train_loss = self.model(train_max_input_len, train_input_seqs, train_input_mask, train_max_target_len, is_train=True, output_seqs=train_target_seqs, output_mask=train_target_mask)
                 train_loss.backward()
@@ -119,7 +119,8 @@ class Train(nn.Module):
                     print(string)
 
                     # Run prediction examples
-                    val_input_seqs, val_input_mask, val_max_input_len, val_target_seqs, _, _ = val.get_random_batch(num_val_examples, USE_CUDA)
+                    # Set volatile to True for inference mode
+                    val_input_seqs, val_input_mask, val_max_input_len, val_target_seqs, _, _ = val.get_random_batch(num_val_examples, USE_CUDA, True)
 
                     predictions = self.model(val_max_input_len, val_input_seqs, val_input_mask, 25, is_train=False, start_idx=GO_TOKEN_INDEX)
                     pred_results, bleu = self.print_prediction_results(val_input_seqs, val_target_seqs, predictions, index2word, EOS_TOKEN_INDEX)

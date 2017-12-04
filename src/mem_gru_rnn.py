@@ -200,8 +200,8 @@ class GRUDecoderRNN(nn.Module):
         
         # Predict mode
         batch_size = hidden.size()[0]
-        mask_ones = Var(torch.ones([batch_size])) # batch x 1
-        decoder_input = Var(torch.LongTensor([[start_idx] for _ in range(batch_size)])) # batch x 1
+        mask_ones = Var(torch.ones([batch_size]), volatile=True) # batch x 1
+        decoder_input = Var(torch.LongTensor([[start_idx] for _ in range(batch_size)]), volatile=True) # batch x 1
         pred_seqs = decoder_input.clone() 
 
         if USE_CUDA:
