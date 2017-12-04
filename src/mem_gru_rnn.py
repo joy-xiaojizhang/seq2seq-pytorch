@@ -202,12 +202,14 @@ class GRUDecoderRNN(nn.Module):
         batch_size = hidden.size()[0]
         mask_ones = Var(torch.ones([batch_size]), volatile=True) # batch x 1
         decoder_input = Var(torch.LongTensor([[start_idx] for _ in range(batch_size)]), volatile=True) # batch x 1
-        pred_seqs = decoder_input.clone() 
+        pred_seqs = decoder_input.data.clone() 
 
+        '''
         if USE_CUDA:
             mask_ones = mask_ones.cuda()
             decoder_input = decoder_input.cuda()
             pred_seqs = pred_seqs.cuda()
+        '''
 
         for i in range(max_step - 1): # May modify later
             embedded_i = self.embedding(decoder_input).squeeze() # batch x embed

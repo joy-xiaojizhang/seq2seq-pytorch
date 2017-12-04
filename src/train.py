@@ -43,9 +43,9 @@ class Train(nn.Module):
         batch_size = input_seqs.size()[0]
 
         # Truncate sequences (remove everything after <eos>)
-        input_seqs = [self.truncate_seq(seq.data.cpu().numpy().tolist(), eos_idx) for seq in input_seqs] 
-        target_seqs = [self.truncate_seq(seq.data.cpu().numpy().tolist(), eos_idx) for seq in target_seqs] 
-        pred_seqs = [self.truncate_seq(seq.data.cpu().numpy().tolist(), eos_idx) for seq in pred_seqs] 
+        input_seqs = [self.truncate_seq(seq.data.numpy().tolist(), eos_idx) for seq in input_seqs] 
+        target_seqs = [self.truncate_seq(seq.data.numpy().tolist(), eos_idx) for seq in target_seqs] 
+        pred_seqs = [self.truncate_seq(seq.data.numpy().tolist(), eos_idx) for seq in pred_seqs] 
 
         # Convert indices to words
         input_seqs = [indices_to_line(seq, index2word) for seq in input_seqs]
@@ -120,7 +120,8 @@ class Train(nn.Module):
 
                     # Run prediction examples
                     # Set volatile to True for inference mode
-                    val_input_seqs, val_input_mask, val_max_input_len, val_target_seqs, _, _ = val.get_random_batch(num_val_examples, USE_CUDA, True)
+                    # Evaluate on CPU to reduce GPU memory usage
+                    val_input_seqs, val_input_mask, val_max_input_len, val_target_seqs, _, _ = val.get_random_batch(num_val_examples, False, True)
 
                     predictions = self.model(val_max_input_len, val_input_seqs, val_input_mask, 25, is_train=False, start_idx=GO_TOKEN_INDEX)
                     pred_results, bleu = self.print_prediction_results(val_input_seqs, val_target_seqs, predictions, index2word, EOS_TOKEN_INDEX)
