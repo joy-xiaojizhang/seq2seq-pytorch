@@ -1,4 +1,4 @@
-import os, time
+import os, time, datetime
 
 import torch
 import torch.nn as nn
@@ -12,10 +12,14 @@ from nltk.translate import bleu_score as BLEU
 from blackbox_gru_rnn import BlackboxGRUEncoderRNN, BlackboxGRUDecoderRNN
 from mem_gru_rnn import GRUSeq2Seq
 
+from gpu_monitor import get_gpu_usage
+
 NUM_BLEU_GRAMS = 4
 
 logs_dir = 'logs'
 USE_CUDA = torch.cuda.is_available()
+
+MEM_GRU_MODEL_PATH = 'models/mem_gru_checkpoint_{}.pth'
 
 class Train(nn.Module):
     def __init__(self):
@@ -91,7 +95,9 @@ class Train(nn.Module):
 
             print('Number of training batches: {}'.format(num_train_batches))
 
-            fo = open(os.path.join(logs_dir, 'epoch_{}.txt'.format(e)), 'w')
+            timestamp = '{:%Y%m%d%H%M%S}'.format(datetime.datetime.now())
+            os.mkdir(os.path.join(logs_dir, timestamp))
+            fo = open(os.path.join(logs_dir, timestamp, 'epoch_{}.txt'.format(e)), 'w')
             epoch_start = '************Epoch {} Starts*************\n'.format(e)
             fo.write(epoch_start)
             print(epoch_start)
@@ -118,6 +124,11 @@ class Train(nn.Module):
                     fo.write(string)
                     print(string)
 
+                    # Print GPU usage
+                    gpu_usage = 'GPU usage: {} / {}'.format(get_gpu_usage('python3'), get_gpu_usage('FB Memory Usage'))
+                    fo.write(gpu_usage)
+                    print(gpu_usage)
+
                     # Run prediction examples
                     # Set volatile to True for inference mode
                     val_input_seqs, val_input_mask, val_max_input_len, val_target_seqs, _, _ = val.get_random_batch(num_val_examples, USE_CUDA, True)
@@ -133,9 +144,10 @@ class Train(nn.Module):
             epoch_end = '************Epoch {} Ends*************\n'.format(e)
             epoch_time = 'Total time: {:.2f} s\n'.format(epoch_end_time - epoch_start_time)
             fo.write(epoch_end + epoch_time)
-            fo.write(train_losses[-1], bleu_scores[-1])
-            fo.close()
             print(epoch_end + epoch_time)
+            fo.close()
+
+            torch.save(self.model.state_dict(), MEM_GRU_MODEL_PATH.format(e))
             epoch_start_time = time.time()
 
         return train_losses, bleu_scores
