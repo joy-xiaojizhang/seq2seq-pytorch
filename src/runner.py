@@ -4,7 +4,7 @@ from train import Train
 from data import VOCAB_SIZE
 
 train_lr = 1e-4
-train_batch_size = 10
+train_batch_size = 50
 train_epoch = 20
 train_hidden_size = 300
 train_print_iters = 100
