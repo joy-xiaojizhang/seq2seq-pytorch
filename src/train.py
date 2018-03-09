@@ -12,10 +12,9 @@ from nltk.translate import bleu_score as BLEU
 from blackbox_gru_rnn import BlackboxGRUEncoderRNN, BlackboxGRUDecoderRNN
 from mem_gru_rnn import GRUSeq2Seq
 
-#from gpu_monitor import get_gpu_usage
-import psutil
+from gpu_monitor import get_gpu_usage
 
-NUM_BLEU_GRAMS = 4#4
+NUM_BLEU_GRAMS = 4
 
 logs_dir = 'logs'
 USE_CUDA = torch.cuda.is_available()
@@ -127,17 +126,9 @@ class Train(nn.Module):
                     print(string)
 
                     # Print GPU usage
-#                    gpu_usage = 'GPU usage: {} / {}'.format(get_gpu_usage('python3'), get_gpu_usage('FB Memory Usage'))
-#                    fo.write(gpu_usage)
-#                    print(gpu_usage)
-
-                    # Print CPU usage
-                    pid = os.getpid()
-                    py = psutil.Process(pid)
-                    memoryUse = py.memory_info()[0]/2.**30
-                    cpu_usage = 'CPU percent: {}, Virtual Mem: {}, Mem. Usage in GB: {}'.format(psutil.cpu_percent(), psutil.virtual_memory(), memoryUse)
-                    print(cpu_usage)
-                    fo.write(cpu_usage)
+                    gpu_usage = 'GPU usage: {} / {}'.format(get_gpu_usage('python3'), get_gpu_usage('FB Memory Usage'))
+                    fo.write(gpu_usage)
+                    print(gpu_usage)
 
                     # Run prediction examples
                     # Set volatile to True for inference mode
@@ -147,7 +138,7 @@ class Train(nn.Module):
                     pred_results, bleu = self.print_prediction_results(val_input_seqs, val_target_seqs, predictions, index2word, EOS_TOKEN_INDEX)
                     del predictions
                     fo.write(pred_results)
-                    #print(pred_results)
+                    print(pred_results)
                     bleu_scores.append(bleu) #Modify later
                     iters_start_time = time.time()
 
