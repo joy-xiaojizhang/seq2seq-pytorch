@@ -112,7 +112,7 @@ class Train(nn.Module):
 
                 train_loss = self.model(train_max_input_len, train_input_seqs, train_input_mask, train_max_target_len, is_train=True, output_seqs=train_target_seqs, output_mask=train_target_mask)
                 train_loss.backward()
-                train_losses.append(train_loss)
+#                train_losses.append(train_loss)
                 optimizer.step()
 
                 if i % print_iters == 0:
@@ -121,6 +121,7 @@ class Train(nn.Module):
                     # Print train loss
                     string = 'Iters: {}, train loss: {:.2f}, time: {:.2f} s\n'
                     string = string.format(i, train_loss.data[0], iters_end_time - iters_start_time)
+                    del train_loss
                     fo.write(string)
                     print(string)
 
@@ -135,6 +136,7 @@ class Train(nn.Module):
 
                     predictions = self.model(val_max_input_len, val_input_seqs, val_input_mask, 25, is_train=False, start_idx=GO_TOKEN_INDEX)
                     pred_results, bleu = self.print_prediction_results(val_input_seqs, val_target_seqs, predictions, index2word, EOS_TOKEN_INDEX)
+                    del predictions
                     fo.write(pred_results)
                     print(pred_results)
                     bleu_scores.append(bleu) #Modify later
@@ -150,4 +152,5 @@ class Train(nn.Module):
             torch.save(self.model.state_dict(), MEM_GRU_MODEL_PATH.format(e))
             epoch_start_time = time.time()
 
-        return train_losses, bleu_scores
+        return bleu_scores
+#        return train_losses, bleu_scores
